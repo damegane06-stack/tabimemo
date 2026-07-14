@@ -110,7 +110,7 @@
   .badge{font-size:10.5px;font-weight:700;border-radius:999px;padding:3px 9px;}
   .badge.pref{background:#eef1f6;color:#556;}
   .memo{font-size:12px;color:var(--sub);margin-top:6px;white-space:pre-wrap;line-height:1.5;}
-  .actions{display:flex;gap:6px;margin-top:10px;}
+  .actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
   .abtn{
     flex:1;border:none;border-radius:999px;padding:9px 0;font-size:11.5px;font-weight:700;cursor:pointer;
     background:#f3eef7;color:#5a5364;text-align:center;text-decoration:none;transition:transform .12s;
@@ -295,6 +295,13 @@
       </div>
       <label>インスタ投稿URL</label>
       <input id="f-url" type="url" placeholder="https://www.instagram.com/p/…" inputmode="url">
+      <label>予約・お店のURL（任意）</label>
+      <input id="f-rsv" type="url" placeholder="食べログ・ホットペッパー・公式サイトなどのURL" inputmode="url">
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button class="abtn" onclick="findTabelog()">🍽 食べログで探す</button>
+        <button class="abtn" onclick="findHotpepper()">🍻 ホットペッパーで探す</button>
+      </div>
+      <p style="font-size:10.5px;color:var(--sub);margin-top:6px;line-height:1.6;">検索で見つけたお店ページのURLをコピーして上の欄に貼ると、カードに「予約」ボタンが付きます</p>
       <label>メモ</label>
       <textarea id="f-memo" placeholder="営業時間、誰と行きたいか、注文したいメニューなど"></textarea>
       <label>ステータス</label>
@@ -664,6 +671,7 @@ function renderList(){
       ${s.status!=='want'&&(s.visitDate||s.review)?`<p class="memo" style="background:#f2fbf6;border-radius:10px;padding:7px 10px;color:#3f9d74;">🗓 ${esc(s.visitDate||'日付なし')}${s.review?'　「'+esc(s.review)+'」':''}</p>`:''}
       <div class="actions">
         ${s.url?`<a class="abtn insta" href="${esc(s.url)}" target="_blank" rel="noopener">Instagram</a>`:''}
+        ${s.rsv?`<a class="abtn" style="background:#fff3e0;color:#e07f26;" href="${esc(s.rsv)}" target="_blank" rel="noopener">🍽 予約</a>`:''}
         <a class="abtn route" href="https://www.google.com/maps/dir/?api=1&destination=${dest}" target="_blank" rel="noopener">🚗 経路</a>
         <button class="abtn" onclick="editSpot('${s.id}')">✏️ 編集</button>
         <button class="abtn" style="flex:0 0 40px;" onclick="shareSpot('${s.id}')">📤</button>
@@ -687,6 +695,7 @@ async function shareSpot(id){
   const lines=[cat.emoji+' '+s.name,'📍 '+s.pref+(s.city?'・'+s.city:'')+(s.stn?'（'+s.stn[0]+'駅）':'')];
   if(s.memo)lines.push(s.memo);
   if(s.url)lines.push(s.url);
+  if(s.rsv)lines.push('🍽 予約: '+s.rsv);
   lines.push('🗺 https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(s.name+' '+s.pref+(s.city||'')));
   const text=lines.join('\n');
   if(navigator.share){
@@ -718,6 +727,19 @@ prefSel.value='東京';
 });
 function updateVisitBlock(){
   document.getElementById('visit-block').style.display=segVal('f-status')==='want'?'none':'block';
+}
+function rsvKeyword(){
+  const name=document.getElementById('f-name').value.trim();
+  if(!name)return null;
+  return encodeURIComponent((name+' '+(citySel.value||prefSel.value||'')).trim());
+}
+function findTabelog(){
+  const k=rsvKeyword();if(!k){toast('先にスポット名を入力してね');return;}
+  window.open('https://tabelog.com/rstLst/?sw='+k,'_blank');
+}
+function findHotpepper(){
+  const k=rsvKeyword();if(!k){toast('先にスポット名を入力してね');return;}
+  window.open('https://www.google.com/search?q=site%3Ahotpepper.jp+'+k,'_blank');
 }
 async function pasteFromClip(){
   try{
@@ -826,6 +848,7 @@ function openAdd(pref){
 function resetForm(){
   document.getElementById('f-name').value='';
   document.getElementById('f-url').value='';
+  document.getElementById('f-rsv').value='';
   document.getElementById('f-memo').value='';
   document.getElementById('f-paste').value='';
   pendingPhoto=undefined;hidePhotoPrev();
@@ -841,6 +864,7 @@ function editSpot(id){
   editingId=id;
   document.getElementById('f-name').value=s.name;
   document.getElementById('f-url').value=s.url||'';
+  document.getElementById('f-rsv').value=s.rsv||'';
   document.getElementById('f-memo').value=s.memo||'';
   setPref(s.pref);
   citySel.value=s.city||'';
@@ -862,13 +886,15 @@ function saveSpot(){
   if(!name){toast('スポット名を入力してください');return;}
   let url=document.getElementById('f-url').value.trim();
   if(url&&!/^https?:\/\//i.test(url))url='https://'+url;
+  let rsv=document.getElementById('f-rsv').value.trim();
+  if(rsv&&!/^https?:\/\//i.test(rsv))rsv='https://'+rsv;
   const sv=stnSel.value;
   const data={
     name,pref:prefSel.value,city:citySel.value,cat:segVal('f-cat'),status:segVal('f-status'),
     stn:sv!==''&&stnChoices[+sv]?stnChoices[+sv].s.slice(0,3):null,
     visitDate:segVal('f-status')!=='want'?document.getElementById('f-vdate').value:'',
     review:segVal('f-status')!=='want'?document.getElementById('f-review').value.trim():'',
-    url,memo:document.getElementById('f-memo').value.trim()
+    url,rsv,memo:document.getElementById('f-memo').value.trim()
   };
   let savedId;
   if(editingId){
@@ -987,7 +1013,7 @@ document.getElementById('import-file').addEventListener('change',e=>{
           const id=s.id||uid();
           spots.push({id,created:s.created||Date.now(),name:s.name,pref:s.pref,
             cat:CATS[s.cat]?s.cat:'place',status:['done','again'].includes(s.status)?s.status:'want',
-            city:s.city||'',url:s.url||'',memo:s.memo||'',
+            city:s.city||'',url:s.url||'',rsv:s.rsv||'',memo:s.memo||'',
             visitDate:s.visitDate||'',review:s.review||'',
             stn:Array.isArray(s.stn)&&s.stn.length>=3?[String(s.stn[0]),+s.stn[1],+s.stn[2]]:null});
           if(typeof s.photo==='string'&&s.photo.startsWith('data:image')){photoCache[id]=s.photo;idb.put(id,s.photo);}
