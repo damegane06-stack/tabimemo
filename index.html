@@ -299,6 +299,11 @@
       <input id="f-url" type="url" placeholder="https://www.instagram.com/p/…" inputmode="url">
       <label>予約・お店のURL（任意）</label>
       <input id="f-rsv" type="url" placeholder="食べログ・ホットペッパー・公式サイトなどのURL" inputmode="url">
+      <div id="hp-auto-wrap" style="display:none;margin-top:8px;">
+        <button class="abtn" style="width:100%;padding:11px;background:#ffe3e3;color:#d64545;" onclick="hpSearch()">🔍 ホットペッパーでお店を自動検索</button>
+        <div id="hp-results"></div>
+        <p style="font-size:9.5px;color:var(--sub);margin-top:4px;text-align:right;">Powered by <a href="http://webservice.recruit.co.jp/" target="_blank" rel="noopener" style="color:var(--sub);">ホットペッパーグルメ Webサービス</a></p>
+      </div>
       <div style="display:flex;gap:6px;margin-top:8px;">
         <button class="abtn" onclick="findTabelog()">🍽 食べログで探す</button>
         <button class="abtn" onclick="findHotpepper()">🍻 ホットペッパーで探す</button>
@@ -333,6 +338,13 @@
         <button data-v="simple" onclick="setTheme('simple')">🤍 シンプル</button>
         <button data-v="cool" onclick="setTheme('cool')">🌊 クール</button>
       </div>
+    </div>
+    <div class="set-card">
+      <h4>🍽 ホットペッパーAPI連携（任意）</h4>
+      <p>APIキーを設定すると、スポット名からお店を自動検索して予約URL・正確な位置・最寄り駅をまとめて取り込めます。<a href="https://webservice.recruit.co.jp/register" target="_blank" rel="noopener">キーの無料登録はこちら</a></p>
+      <input id="hp-key" type="text" placeholder="APIキーを貼り付け" style="width:100%;border:1.5px solid var(--line);border-radius:11px;padding:10px 12px;font-size:14px;">
+      <button class="abtn" style="width:100%;margin-top:8px;padding:10px;" onclick="saveHpKey()">キーを保存</button>
+      <p style="margin-top:10px;margin-bottom:0;">Powered by <a href="http://webservice.recruit.co.jp/" target="_blank" rel="noopener">ホットペッパーグルメ Webサービス</a></p>
     </div>
     <div class="set-card">
       <h4>💾 バックアップ（書き出し）</h4>
@@ -433,6 +445,7 @@ const idb={
 };
 let photoCache={};
 let pendingPhoto=undefined; // undefined=変更なし, dataURL=新規, '__DEL__'=削除
+let pendingGeo=null; // お店の正確な座標 [lat,lng]
 
 function load(){
   try{return JSON.parse(localStorage.getItem(KEY))||[];}catch(e){return [];}
@@ -622,6 +635,7 @@ function geoSort(){
 }
 function spotDist(s){
   if(stnSort){
+    if(Array.isArray(s.geo))return dist(stnSort.lat,stnSort.lng,s.geo[0],s.geo[1]);
     if(s.stn)return dist(stnSort.lat,stnSort.lng,s.stn[1],s.stn[2]);
     const c=cityCenter(s.pref,s.city||'');
     if(c)return dist(stnSort.lat,stnSort.lng,c[0],c[1]);
@@ -857,6 +871,8 @@ function resetForm(){
   document.getElementById('f-memo').value='';
   document.getElementById('f-paste').value='';
   pendingPhoto=undefined;hidePhotoPrev();
+  pendingGeo=null;
+  document.getElementById('hp-results').innerHTML='';
   document.getElementById('f-vdate').value='';
   document.getElementById('f-review').value='';
   setSeg('f-cat','place');setSeg('f-status','want');
@@ -875,6 +891,7 @@ function editSpot(id){
   citySel.value=s.city||'';
   updateStationChoices(s.stn||null);
   pendingPhoto=undefined;
+  pendingGeo=s.geo||null;
   if(photoCache[s.id])showPhotoPrev(photoCache[s.id]);else hidePhotoPrev();
   document.getElementById('f-vdate').value=s.visitDate||'';
   document.getElementById('f-review').value=s.review||'';
@@ -897,6 +914,7 @@ function saveSpot(){
   const data={
     name,pref:prefSel.value,city:citySel.value,cat:segVal('f-cat'),status:segVal('f-status'),
     stn:sv!==''&&stnChoices[+sv]?stnChoices[+sv].s.slice(0,3):null,
+    geo:pendingGeo||null,
     visitDate:segVal('f-status')!=='want'?document.getElementById('f-vdate').value:'',
     review:segVal('f-status')!=='want'?document.getElementById('f-review').value.trim():'',
     url,rsv,memo:document.getElementById('f-memo').value.trim()
@@ -995,6 +1013,73 @@ function autoDetect(){
   toast('📍 '+pref+(best&&best.city?'・'+best.city:'')+(stnHit?' 🚉'+stnHit.s[0]+'駅':'')+' を検出！');
 }
 
+/* ================= ホットペッパーAPI ================= */
+let hpKey=localStorage.getItem('tabi_hpkey')||'';
+function saveHpKey(){
+  hpKey=document.getElementById('hp-key').value.trim();
+  localStorage.setItem('tabi_hpkey',hpKey);
+  toast(hpKey?'APIキーを保存しました':'APIキーを削除しました');
+  updateHpBtn();
+}
+function updateHpBtn(){
+  document.getElementById('hp-auto-wrap').style.display=hpKey?'block':'none';
+}
+let hpShops=[],hpTimer=null;
+function hpSearch(){
+  if(!hpKey){toast('設定画面でAPIキーを登録してください');return;}
+  const name=document.getElementById('f-name').value.trim();
+  if(!name){toast('先にスポット名を入力してね');return;}
+  const box=document.getElementById('hp-results');
+  box.innerHTML='<p style="font-size:12px;color:var(--sub);padding:8px 4px;">検索中…</p>';
+  const old=document.getElementById('hp-jsonp');if(old)old.remove();
+  const sc=document.createElement('script');
+  sc.id='hp-jsonp';
+  sc.src='https://webservice.recruit.co.jp/hotpepper/gourmet/v1/?key='+encodeURIComponent(hpKey)
+    +'&keyword='+encodeURIComponent(name+' '+prefSel.value)+'&count=5&format=jsonp&callback=onHpResult';
+  sc.onerror=()=>{box.innerHTML='';toast('通信エラーで検索できませんでした');};
+  document.body.appendChild(sc);
+  clearTimeout(hpTimer);
+  hpTimer=setTimeout(()=>{if(box.textContent.includes('検索中'))box.innerHTML='<p style="font-size:12px;color:var(--sub);padding:8px 4px;">時間切れ。電波の良い場所でもう一度試してね</p>';},8000);
+}
+function onHpResult(d){
+  clearTimeout(hpTimer);
+  const box=document.getElementById('hp-results');
+  if(!d||!d.results){box.innerHTML='';toast('検索に失敗しました');return;}
+  if(d.results.error){
+    box.innerHTML='';
+    const msg=(d.results.error[0]&&d.results.error[0].message)||'';
+    toast('エラー: '+(msg||'APIキーを確認してください'));return;
+  }
+  hpShops=d.results.shop||[];
+  if(!hpShops.length){
+    box.innerHTML='<p style="font-size:12px;color:var(--sub);padding:8px 4px;">見つかりませんでした（掲載外のお店かも）。下の食べログ検索も試してみてね</p>';
+    return;
+  }
+  box.innerHTML='<p style="font-size:11px;font-weight:700;color:var(--sub);padding:8px 4px 2px;">お店をタップして取り込み:</p>'+hpShops.map((s,i)=>
+    `<button onclick="pickHpShop(${i})" style="display:block;width:100%;border:1.5px solid var(--line);background:#fff;border-radius:12px;text-align:left;padding:9px 12px;margin-top:6px;cursor:pointer;font-family:inherit;">
+      <b style="font-size:13px;">${esc(s.name)}</b><br>
+      <small style="color:var(--sub);">${esc((s.genre&&s.genre.name)||'')}　${esc(s.address||'')}</small>
+    </button>`).join('');
+}
+function pickHpShop(i){
+  const s=hpShops[i];if(!s)return;
+  if(s.urls&&s.urls.pc)document.getElementById('f-rsv').value=s.urls.pc;
+  const addr=s.address||'';
+  let cityEntry='',keyLen=0;
+  for(const e of (CITY_DATA[prefSel.value]||[])){
+    const keys=[e];if(e.includes('郡'))keys.push(e.split('郡')[1]);
+    for(const k of keys){if(addr.includes(k)&&k.length>keyLen){keyLen=k.length;cityEntry=e;}}
+  }
+  if(cityEntry)citySel.value=cityEntry;
+  if(s.lat&&s.lng){
+    pendingGeo=[+(+s.lat).toFixed(5),+(+s.lng).toFixed(5)];
+    updateStationChoices(null,pendingGeo);
+    if(stnChoices.length)stnSel.value='0';
+  }
+  document.getElementById('hp-results').innerHTML='';
+  toast('🍽 「'+s.name+'」を取り込みました');
+}
+
 /* ================= settings ================= */
 function exportData(){
   const out=spots.map(s=>photoCache[s.id]?{...s,photo:photoCache[s.id]}:s);
@@ -1020,7 +1105,8 @@ document.getElementById('import-file').addEventListener('change',e=>{
             cat:CATS[s.cat]?s.cat:'place',status:['done','again'].includes(s.status)?s.status:'want',
             city:s.city||'',url:s.url||'',rsv:s.rsv||'',memo:s.memo||'',
             visitDate:s.visitDate||'',review:s.review||'',
-            stn:Array.isArray(s.stn)&&s.stn.length>=3?[String(s.stn[0]),+s.stn[1],+s.stn[2]]:null});
+            stn:Array.isArray(s.stn)&&s.stn.length>=3?[String(s.stn[0]),+s.stn[1],+s.stn[2]]:null,
+            geo:Array.isArray(s.geo)&&s.geo.length===2?[+s.geo[0],+s.geo[1]]:null});
           if(typeof s.photo==='string'&&s.photo.startsWith('data:image')){photoCache[id]=s.photo;idb.put(id,s.photo);}
           added++;
         }
@@ -1052,6 +1138,8 @@ if(window.visualViewport)window.visualViewport.addEventListener('resize',refresh
 
 /* ================= init ================= */
 setSeg('theme-seg',theme);
+document.getElementById('hp-key').value=hpKey;
+updateHpBtn();
 renderMap();
 idb.open().then(()=>idb.all()).then(p=>{
   photoCache=Object.assign(p,photoCache);
