@@ -1,5 +1,5 @@
 // タビメモ Service Worker（ネット優先・オフライン時はキャッシュ）
-const CACHE = 'tabimemo-v6';
+const CACHE = 'tabimemo-v7';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
