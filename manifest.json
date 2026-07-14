@@ -1,0 +1,14 @@
+{
+  "name": "タビメモ",
+  "short_name": "タビメモ",
+  "description": "インスタで見つけた行きたいところを保存して日本地図でチェック",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fdf2f6",
+  "theme_color": "#ff7eb0",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
