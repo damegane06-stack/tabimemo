@@ -340,10 +340,10 @@
       </div>
     </div>
     <div class="set-card">
-      <h4>🍽 ホットペッパーAPI連携（任意）</h4>
-      <p>APIキーを設定すると、スポット名からお店を自動検索して予約URL・正確な位置・最寄り駅をまとめて取り込めます。<a href="https://webservice.recruit.co.jp/register" target="_blank" rel="noopener">キーの無料登録はこちら</a></p>
-      <input id="hp-key" type="text" placeholder="APIキーを貼り付け" style="width:100%;border:1.5px solid var(--line);border-radius:11px;padding:10px 12px;font-size:14px;">
-      <button class="abtn" style="width:100%;margin-top:8px;padding:10px;" onclick="saveHpKey()">キーを保存</button>
+      <h4>🍽 ホットペッパー連携（任意）</h4>
+      <p>中継URL（Cloudflare Worker）を設定すると、スポット名からお店を自動検索して予約URL・正確な位置・最寄り駅をまとめて取り込めます。設定方法は配布された「setup-hotpepper.md」を参照。</p>
+      <input id="hp-key" type="url" placeholder="https://〇〇.workers.dev（中継URL）" style="width:100%;border:1.5px solid var(--line);border-radius:11px;padding:10px 12px;font-size:14px;">
+      <button class="abtn" style="width:100%;margin-top:8px;padding:10px;" onclick="saveHpKey()">保存する</button>
       <p style="margin-top:10px;margin-bottom:0;">Powered by <a href="http://webservice.recruit.co.jp/" target="_blank" rel="noopener">ホットペッパーグルメ Webサービス</a></p>
     </div>
     <div class="set-card">
@@ -1014,41 +1014,43 @@ function autoDetect(){
 }
 
 /* ================= ホットペッパーAPI ================= */
-let hpKey=localStorage.getItem('tabi_hpkey')||'';
+let hpUrl=localStorage.getItem('tabi_hpurl')||'';
 function saveHpKey(){
-  hpKey=document.getElementById('hp-key').value.trim();
-  localStorage.setItem('tabi_hpkey',hpKey);
-  toast(hpKey?'APIキーを保存しました':'APIキーを削除しました');
+  let v=document.getElementById('hp-key').value.trim();
+  if(v&&!/^https?:\/\//i.test(v))v='https://'+v;
+  if(v&&v.includes('?'))v=v.split('?')[0];
+  hpUrl=v;
+  document.getElementById('hp-key').value=v;
+  localStorage.setItem('tabi_hpurl',hpUrl);
+  toast(hpUrl?'中継URLを保存しました':'中継URLを削除しました');
   updateHpBtn();
 }
 function updateHpBtn(){
-  document.getElementById('hp-auto-wrap').style.display=hpKey?'block':'none';
+  document.getElementById('hp-auto-wrap').style.display=hpUrl?'block':'none';
 }
-let hpShops=[],hpTimer=null;
-function hpSearch(){
-  if(!hpKey){toast('設定画面でAPIキーを登録してください');return;}
+let hpShops=[];
+async function hpSearch(){
+  if(!hpUrl){toast('設定画面で中継URLを登録してください');return;}
   const name=document.getElementById('f-name').value.trim();
   if(!name){toast('先にスポット名を入力してね');return;}
   const box=document.getElementById('hp-results');
   box.innerHTML='<p style="font-size:12px;color:var(--sub);padding:8px 4px;">検索中…</p>';
-  const old=document.getElementById('hp-jsonp');if(old)old.remove();
-  const sc=document.createElement('script');
-  sc.id='hp-jsonp';
-  sc.src='https://webservice.recruit.co.jp/hotpepper/gourmet/v1/?key='+encodeURIComponent(hpKey)
-    +'&keyword='+encodeURIComponent(name+' '+prefSel.value)+'&count=5&format=jsonp&callback=onHpResult';
-  sc.onerror=()=>{box.innerHTML='';toast('通信エラーで検索できませんでした');};
-  document.body.appendChild(sc);
-  clearTimeout(hpTimer);
-  hpTimer=setTimeout(()=>{if(box.textContent.includes('検索中'))box.innerHTML='<p style="font-size:12px;color:var(--sub);padding:8px 4px;">時間切れ。電波の良い場所でもう一度試してね</p>';},8000);
+  try{
+    const r=await fetch(hpUrl+'?keyword='+encodeURIComponent(name+' '+prefSel.value),{signal:AbortSignal.timeout(10000)});
+    const d=await r.json();
+    onHpResult(d);
+  }catch(e){
+    box.innerHTML='';
+    toast('通信エラー: 中継URLと電波を確認してね');
+  }
 }
 function onHpResult(d){
-  clearTimeout(hpTimer);
   const box=document.getElementById('hp-results');
   if(!d||!d.results){box.innerHTML='';toast('検索に失敗しました');return;}
   if(d.results.error){
     box.innerHTML='';
     const msg=(d.results.error[0]&&d.results.error[0].message)||'';
-    toast('エラー: '+(msg||'APIキーを確認してください'));return;
+    toast('エラー: '+(msg||'Worker側のAPIキー設定を確認してください'));return;
   }
   hpShops=d.results.shop||[];
   if(!hpShops.length){
@@ -1138,7 +1140,7 @@ if(window.visualViewport)window.visualViewport.addEventListener('resize',refresh
 
 /* ================= init ================= */
 setSeg('theme-seg',theme);
-document.getElementById('hp-key').value=hpKey;
+document.getElementById('hp-key').value=hpUrl;
 updateHpBtn();
 renderMap();
 idb.open().then(()=>idb.all()).then(p=>{
