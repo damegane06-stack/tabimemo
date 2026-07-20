@@ -304,9 +304,10 @@
         <div id="hp-results"></div>
         <p style="font-size:9.5px;color:var(--sub);margin-top:4px;text-align:right;">Powered by <a href="http://webservice.recruit.co.jp/" target="_blank" rel="noopener" style="color:var(--sub);">ホットペッパーグルメ Webサービス</a></p>
       </div>
-      <div style="display:flex;gap:6px;margin-top:8px;">
-        <button class="abtn" onclick="findTabelog()">🍽 食べログで探す</button>
-        <button class="abtn" onclick="findHotpepper()">🍻 ホットペッパーで探す</button>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+        <button class="abtn" style="flex:1 1 45%;" onclick="findTabelog()">🍽 食べログで探す</button>
+        <button class="abtn" style="flex:1 1 45%;" onclick="findHotpepper()">🍻 ホットペッパーで探す</button>
+        <button class="abtn" style="flex:1 1 45%;" onclick="findGnavi()">🍴 ぐるなびで探す</button>
       </div>
       <p style="font-size:10.5px;color:var(--sub);margin-top:6px;line-height:1.6;">検索で見つけたお店ページのURLをコピーして上の欄に貼ると、カードに「予約」ボタンが付きます</p>
       <label>メモ</label>
@@ -770,6 +771,11 @@ function findHotpepper(){
   if(!name){toast('先にスポット名を入力してね');return;}
   const sa=HP_SA[prefSel.value];
   window.open('https://www.hotpepper.jp/'+(sa?sa+'/':'')+'fwt'+encodeURIComponent(name)+'/','_blank');
+}
+function findGnavi(){
+  const name=normKw(document.getElementById('f-name').value);
+  if(!name){toast('先にスポット名を入力してね');return;}
+  window.open('https://r.gnavi.co.jp/area/jp/rs/?fw='+encodeURIComponent(normKw(name+' '+prefSel.value)),'_blank');
 }
 async function pasteFromClip(){
   try{
