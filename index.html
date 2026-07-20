@@ -298,7 +298,7 @@
       <label>インスタ投稿URL</label>
       <input id="f-url" type="url" placeholder="https://www.instagram.com/p/…" inputmode="url">
       <label>予約・お店のURL（任意）</label>
-      <input id="f-rsv" type="url" placeholder="食べログ・ホットペッパー・公式サイトなどのURL" inputmode="url">
+      <input id="f-rsv" type="url" placeholder="お店のURL（食べログアプリの共有テキストを丸ごと貼ってもOK）" inputmode="url">
       <div id="hp-auto-wrap" style="display:none;margin-top:8px;">
         <button class="abtn" style="width:100%;padding:11px;background:#ffe3e3;color:#d64545;" onclick="hpSearch()">🔍 ホットペッパーでお店を自動検索</button>
         <div id="hp-results"></div>
@@ -909,10 +909,16 @@ function cancelEdit(){editingId=null;resetForm();show('list');}
 function saveSpot(){
   const name=document.getElementById('f-name').value.trim();
   if(!name){toast('スポット名を入力してください');return;}
-  let url=document.getElementById('f-url').value.trim();
-  if(url&&!/^https?:\/\//i.test(url))url='https://'+url;
-  let rsv=document.getElementById('f-rsv').value.trim();
-  if(rsv&&!/^https?:\/\//i.test(rsv))rsv='https://'+rsv;
+  function pickUrl(raw){
+    raw=(raw||'').trim();
+    if(!raw)return '';
+    const m=raw.match(/https?:\/\/[^\s\u3000]+/);      // テキスト混じりでもURL部分だけ抽出
+    if(m)return m[0];
+    if(/^[\w.-]+\.[a-z]{2,}\S*$/i.test(raw))return 'https://'+raw; // ドメインだけの場合
+    return '';
+  }
+  let url=pickUrl(document.getElementById('f-url').value);
+  let rsv=pickUrl(document.getElementById('f-rsv').value);
   const sv=stnSel.value;
   const data={
     name,pref:prefSel.value,city:citySel.value,cat:segVal('f-cat'),status:segVal('f-status'),
