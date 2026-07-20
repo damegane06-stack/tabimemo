@@ -469,7 +469,15 @@ function show(view){
   window.scrollTo(0,0);
 }
 document.querySelectorAll('nav button').forEach(b=>{
-  b.addEventListener('click',()=>{if(b.dataset.view!=='add')editingId=null;show(b.dataset.view);});
+  b.addEventListener('click',()=>{
+    if(b.dataset.view!=='add')editingId=null;
+    // 地図表示中にもう一度「地図」を押したら全国ビューへ戻る
+    if(b.dataset.view==='map'&&document.getElementById('view-map').classList.contains('active')&&mapRegion!==null){
+      backToRegions();
+      return;
+    }
+    show(b.dataset.view);
+  });
 });
 
 /* ================= map ================= */
