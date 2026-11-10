@@ -318,6 +318,12 @@
         <button data-v="done">✅ 行った</button>
         <button data-v="again">🔁 また行きたい</button>
       </div>
+      <label>保存した人（任意）</label>
+      <div class="seg" id="f-by">
+        <button data-v="" class="on">未設定</button>
+        <button data-v="self">🙋 自分</button>
+        <button data-v="other">💞 もう一人</button>
+      </div>
       <div id="visit-block" style="display:none;">
         <label>行った日（任意）</label>
         <input type="date" id="f-vdate">
@@ -394,6 +400,12 @@ const CATS={
   souvenir:{label:'お土産',emoji:'🎁',color:'#e88bc4'},
   activity:{label:'アクティビティ',emoji:'🎡',color:'#4ecfa5'}
 };
+// 保存した人（Instagram共同コレクション由来など）。未設定は表示しない
+const BYS={
+  self:{label:'自分',emoji:'🙋',bg:'#e8f0ff',fg:'#3b5bbf'},
+  other:{label:'もう一人',emoji:'💞',bg:'#ffe4f0',fg:'#c2417c'}
+};
+function normBy(v){return v==='self'||v==='other'?v:'';}
 // [名前, col, row]
 const PREFS=[
  ["北海道",14,0],["青森",14,2],["秋田",13,3],["岩手",14,3],["山形",13,4],["宮城",14,4],
@@ -689,6 +701,7 @@ function renderList(){
       <div class="badges">
         <span class="badge pref">📍 ${s.pref}${s.city?'・'+s.city:''}</span>
         <span class="badge" style="background:${cat.color}1a;color:${cat.color}">${cat.label}</span>
+        ${BYS[s.by]?`<span class="badge" style="background:${BYS[s.by].bg};color:${BYS[s.by].fg}">${BYS[s.by].emoji} ${BYS[s.by].label}が保存</span>`:''}
         ${s.stn?`<span class="badge" style="background:#e0f2fe;color:#0369a1">🚉 ${esc(s.stn[0])}駅</span>`:''}
         ${stnSort&&spotDist(s)!==Infinity?`<span class="badge" style="background:#fef3c7;color:#92400e">約${spotDist(s)<10?spotDist(s).toFixed(1):Math.round(spotDist(s))}km</span>`:''}
       </div>
@@ -743,7 +756,7 @@ const prefSel=document.getElementById('f-pref');
 prefSel.innerHTML=PREFS.map(p=>`<option value="${p[0]}">${p[0]}</option>`).join('');
 prefSel.value='東京';
 
-['f-cat','f-status'].forEach(id=>{
+['f-cat','f-status','f-by'].forEach(id=>{
   document.getElementById(id).addEventListener('click',e=>{
     const b=e.target.closest('button');if(!b)return;
     document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.toggle('on',x===b));
@@ -892,7 +905,7 @@ function resetForm(){
   document.getElementById('hp-results').innerHTML='';
   document.getElementById('f-vdate').value='';
   document.getElementById('f-review').value='';
-  setSeg('f-cat','place');setSeg('f-status','want');
+  setSeg('f-cat','place');setSeg('f-status','want');setSeg('f-by','');
   updateVisitBlock();
   document.getElementById('f-save').textContent='保存する';
   document.getElementById('f-cancel').style.display='none';
@@ -912,7 +925,7 @@ function editSpot(id){
   if(photoCache[s.id])showPhotoPrev(photoCache[s.id]);else hidePhotoPrev();
   document.getElementById('f-vdate').value=s.visitDate||'';
   document.getElementById('f-review').value=s.review||'';
-  setSeg('f-cat',s.cat);setSeg('f-status',s.status);
+  setSeg('f-cat',s.cat);setSeg('f-status',s.status);setSeg('f-by',normBy(s.by));
   updateVisitBlock();
   document.getElementById('f-save').textContent='更新する';
   document.getElementById('f-cancel').style.display='block';
@@ -940,7 +953,8 @@ function saveSpot(){
     geo:pendingGeo||null,
     visitDate:segVal('f-status')!=='want'?document.getElementById('f-vdate').value:'',
     review:segVal('f-status')!=='want'?document.getElementById('f-review').value.trim():'',
-    url,rsv,memo:document.getElementById('f-memo').value.trim()
+    url,rsv,memo:document.getElementById('f-memo').value.trim(),
+    by:normBy(segVal('f-by'))
   };
   let savedId;
   if(editingId){
@@ -1131,7 +1145,8 @@ document.getElementById('import-file').addEventListener('change',e=>{
             city:s.city||'',url:s.url||'',rsv:s.rsv||'',memo:s.memo||'',
             visitDate:s.visitDate||'',review:s.review||'',
             stn:Array.isArray(s.stn)&&s.stn.length>=3?[String(s.stn[0]),+s.stn[1],+s.stn[2]]:null,
-            geo:Array.isArray(s.geo)&&s.geo.length===2?[+s.geo[0],+s.geo[1]]:null});
+            geo:Array.isArray(s.geo)&&s.geo.length===2?[+s.geo[0],+s.geo[1]]:null,
+            by:normBy(s.by)});
           if(typeof s.photo==='string'&&s.photo.startsWith('data:image')){photoCache[id]=s.photo;idb.put(id,s.photo);}
           added++;
         }
@@ -1169,22 +1184,31 @@ async function syncInbox(){
     if(!res.ok)return;
     const arr=await res.json();
     if(!Array.isArray(arr))return;
-    let added=0;
+    let added=0,filled=0;
     arr.forEach(s=>{
       if(!s||!s.name||!s.pref)return;
       const norm=u=>String(u||'').replace(/\/+$/,'');
-      const dup=spots.some(x=>x.id===s.id)||(s.url&&spots.some(x=>x.url&&norm(x.url)===norm(s.url)));
-      if(dup)return;
+      const dupSpot=spots.find(x=>x.id===s.id)||(s.url&&spots.find(x=>x.url&&norm(x.url)===norm(s.url)));
+      if(dupSpot){
+        // 取り込み済みでも、保存者が未設定なら保存者だけ後から補う（ほかの項目は上書きしない）
+        if(!normBy(dupSpot.by)&&normBy(s.by)){dupSpot.by=normBy(s.by);filled++;}
+        return;
+      }
       const id=s.id||uid();
       spots.push({id,created:s.created||Date.now(),name:s.name,pref:s.pref,
         cat:CATS[s.cat]?s.cat:'place',status:['done','again'].includes(s.status)?s.status:'want',
         city:s.city||'',url:s.url||'',rsv:s.rsv||'',memo:s.memo||'',
         visitDate:s.visitDate||'',review:s.review||'',
         stn:Array.isArray(s.stn)&&s.stn.length>=3?[String(s.stn[0]),+s.stn[1],+s.stn[2]]:null,
-        geo:Array.isArray(s.geo)&&s.geo.length===2?[+s.geo[0],+s.geo[1]]:null});
+        geo:Array.isArray(s.geo)&&s.geo.length===2?[+s.geo[0],+s.geo[1]]:null,
+        by:normBy(s.by)});
       added++;
     });
-    if(added>0){persist();toast('連携スポット '+added+'件を追加しました');renderMap();}
+    if(added>0||filled>0){
+      persist();
+      toast(added>0?'連携スポット '+added+'件を追加しました':'保存した人の情報を '+filled+'件更新しました');
+      renderMap();
+    }
   }catch(e){/* オフラインや連携ファイルがないときは静かにスキップ */}
 }
 
