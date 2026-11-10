@@ -1161,11 +1161,39 @@ document.addEventListener('focusin',refreshNavVis);
 document.addEventListener('focusout',()=>setTimeout(refreshNavVis,100));
 if(window.visualViewport)window.visualViewport.addEventListener('resize',refreshNavVis);
 
+
+/* ================= 連携スポット自動取り込み (Muse) ================= */
+async function syncInbox(){
+  try{
+    const res=await fetch('./spots-inbox.json',{cache:'no-store'});
+    if(!res.ok)return;
+    const arr=await res.json();
+    if(!Array.isArray(arr))return;
+    let added=0;
+    arr.forEach(s=>{
+      if(!s||!s.name||!s.pref)return;
+      const norm=u=>String(u||'').replace(/\/+$/,'');
+      const dup=spots.some(x=>x.id===s.id)||(s.url&&spots.some(x=>x.url&&norm(x.url)===norm(s.url)));
+      if(dup)return;
+      const id=s.id||uid();
+      spots.push({id,created:s.created||Date.now(),name:s.name,pref:s.pref,
+        cat:CATS[s.cat]?s.cat:'place',status:['done','again'].includes(s.status)?s.status:'want',
+        city:s.city||'',url:s.url||'',rsv:s.rsv||'',memo:s.memo||'',
+        visitDate:s.visitDate||'',review:s.review||'',
+        stn:Array.isArray(s.stn)&&s.stn.length>=3?[String(s.stn[0]),+s.stn[1],+s.stn[2]]:null,
+        geo:Array.isArray(s.geo)&&s.geo.length===2?[+s.geo[0],+s.geo[1]]:null});
+      added++;
+    });
+    if(added>0){persist();toast('連携スポット '+added+'件を追加しました');renderMap();}
+  }catch(e){/* オフラインや連携ファイルがないときは静かにスキップ */}
+}
+
 /* ================= init ================= */
 setSeg('theme-seg',theme);
 document.getElementById('hp-key').value=hpUrl;
 updateHpBtn();
 renderMap();
+syncInbox();
 idb.open().then(()=>idb.all()).then(p=>{
   photoCache=Object.assign(p,photoCache);
   if(document.getElementById('view-list').classList.contains('active'))renderList();
